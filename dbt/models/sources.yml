@@ -1,0 +1,33 @@
+version: 2
+
+sources:
+  - name: raw
+    description: Validated synthetic monthly snapshots loaded by src.ingest.
+    schema: raw
+    tables:
+      - name: provider_master
+        columns:
+          - name: provider_id
+            tests: [not_null]
+      - name: sales_rep_master
+        columns:
+          - name: sales_rep_id
+            tests: [not_null]
+      - name: applications
+        description: Digital intake with no authoritative provider or rep attribution.
+        columns:
+          - name: application_id
+            tests: [not_null]
+      - name: application_assignment_events
+        description: Illustrative synthetic downstream assignment event stream.
+        columns:
+          - name: assignment_event_id
+            tests: [not_null]
+      - name: provider_location_reference
+      - name: financed_sales
+        columns:
+          - name: transaction_id
+            tests: [not_null]
+      - name: provider_activity
+      - name: sales_goals
+      - name: pipeline

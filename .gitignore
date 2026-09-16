@@ -216,3 +216,14 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Reproducible local data products
+data/raw/**/*.parquet
+data/fixtures/**/*.parquet
+data/processed/*
+!data/processed/.gitkeep
+warehouse/*.duckdb
+warehouse/*.duckdb.wal
+qa_output/
+dbt/profiles.yml
+dbt/.user.yml
