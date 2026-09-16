@@ -16,7 +16,7 @@ One row per digital application: `application_id`, `application_date`, `applicat
 
 ## `application_assignment_events`
 
-One row per assignment event: `assignment_event_id`, `application_id`, `assignment_date`, `assigned_provider_id`, `assignment_method`, `assignment_confidence`, `assignment_status`, `assigned_by`. Status is `assigned`, `manual_review`, or `unallocated`.
+One row per allocation attempt: `assignment_event_id`, `application_id`, `assignment_date`, `assignment_step`, `assignment_attempt`, `assigned_provider_id`, `candidate_provider_id`, `candidate_count`, `assignment_method`, `match_score`, `assignment_confidence`, `assignment_status`, `rejection_reason`, `assigned_by`, `is_current`. Status is `assigned`, `manual_review`, or `unallocated`. An application may have multiple attempts but exactly one current outcome.
 
 ## `provider_location_reference`
 

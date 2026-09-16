@@ -163,6 +163,194 @@ def _provider_weights(providers: pd.DataFrame, month: str) -> np.ndarray:
     return base / base.sum()
 
 
+def _choose_indexes(
+    indexes: np.ndarray, count: int, rng: np.random.Generator
+) -> np.ndarray:
+    shuffled = indexes.copy()
+    rng.shuffle(shuffled)
+    return shuffled[:count]
+
+
+def _build_assignment_waterfall(
+    applications: pd.DataFrame,
+    candidates: pd.DataFrame,
+    intake_attributed: np.ndarray,
+    profile: MonthProfile,
+    month: str,
+    rng: np.random.Generator,
+) -> tuple[pd.DataFrame, np.ndarray, pd.Series]:
+    """Apply three explainable passes and retain each allocation attempt."""
+    count = len(applications)
+    application_ids = applications["application_id"].to_numpy()
+    application_dates = applications["application_date"].to_numpy()
+    candidate_ids = candidates["provider_id"].to_numpy()
+    assigned = np.zeros(count, dtype=bool)
+    event_frames: list[pd.DataFrame] = []
+
+    def add_events(
+        indexes: np.ndarray,
+        step: int,
+        method: str,
+        newly_assigned: np.ndarray,
+        confidence: np.ndarray,
+        candidate_count: np.ndarray,
+        rejection_reason: np.ndarray,
+        status_override: np.ndarray | None = None,
+    ) -> None:
+        status = (
+            status_override
+            if status_override is not None
+            else np.where(newly_assigned, "assigned", "unallocated")
+        )
+        event_frames.append(
+            pd.DataFrame(
+                {
+                    "application_index": indexes,
+                    "application_id": application_ids[indexes],
+                    "assignment_date": pd.to_datetime(application_dates[indexes])
+                    + pd.to_timedelta(step - 1, unit="D"),
+                    "assignment_step": step,
+                    "assignment_attempt": step,
+                    "assigned_provider_id": pd.Series(
+                        np.where(newly_assigned, candidate_ids[indexes], None),
+                        dtype="object",
+                    ),
+                    "candidate_provider_id": pd.Series(
+                        np.where(candidate_count > 0, candidate_ids[indexes], None),
+                        dtype="object",
+                    ),
+                    "candidate_count": candidate_count,
+                    "assignment_method": method,
+                    "match_score": confidence.round(4),
+                    "assignment_confidence": confidence.round(4),
+                    "assignment_status": status,
+                    "rejection_reason": rejection_reason,
+                    "assigned_by": np.where(
+                        newly_assigned,
+                        "rules_engine" if step == 1 else "system_match",
+                        np.where(status == "manual_review", "analyst_review", "rules_engine"),
+                    ),
+                }
+            )
+        )
+
+    # Pass 1 validates source-provided attribution for half of intake records.
+    all_indexes = np.arange(count)
+    intake_indexes = np.flatnonzero(intake_attributed)
+    pass_one_indexes = _choose_indexes(
+        intake_indexes, round(len(intake_indexes) * 0.99), rng
+    )
+    pass_one_assigned = np.isin(all_indexes, pass_one_indexes)
+    assigned |= pass_one_assigned
+    pass_one_confidence = np.where(
+        pass_one_assigned,
+        rng.uniform(0.96, 0.995, count),
+        rng.uniform(0.20, 0.69, count),
+    )
+    pass_one_reason = np.where(
+        ~intake_attributed,
+        "no_intake_attribution",
+        np.where(pass_one_assigned, None, "intake_validation_failed"),
+    )
+    add_events(
+        all_indexes,
+        1,
+        "validated_intake_attribution",
+        pass_one_assigned,
+        pass_one_confidence,
+        intake_attributed.astype(int),
+        pass_one_reason,
+    )
+
+    # Pass 2 uses a fictional provider-session token for unresolved applications.
+    pass_two_pool = np.flatnonzero(~assigned)
+    session_yield = 0.62 if month <= "2026-06" else 0.50 if month == "2026-07" else 0.42
+    pass_two_indexes = _choose_indexes(
+        pass_two_pool, round(len(pass_two_pool) * session_yield), rng
+    )
+    pass_two_assigned = np.isin(pass_two_pool, pass_two_indexes)
+    assigned[pass_two_indexes] = True
+    pass_two_confidence = np.where(
+        pass_two_assigned,
+        rng.uniform(0.90, 0.97, len(pass_two_pool)),
+        rng.uniform(0.45, 0.84, len(pass_two_pool)),
+    )
+    add_events(
+        pass_two_pool,
+        2,
+        "provider_session_match",
+        pass_two_assigned,
+        pass_two_confidence,
+        np.ones(len(pass_two_pool), dtype=int),
+        np.where(pass_two_assigned, None, "session_match_not_found"),
+    )
+
+    # Pass 3 allocates geographic, specialty, and activity matches only as needed
+    # to reach the month's designed final assignment rate.
+    pass_three_pool = np.flatnonzero(~assigned)
+    target_assigned = round(count * profile.assignment_rate)
+    needed = max(0, min(len(pass_three_pool), target_assigned - int(assigned.sum())))
+    pass_three_indexes = _choose_indexes(pass_three_pool, needed, rng)
+    pass_three_assigned = np.isin(pass_three_pool, pass_three_indexes)
+    assigned[pass_three_indexes] = True
+    candidate_counts = rng.integers(1, 4, len(pass_three_pool))
+    candidate_counts[pass_three_assigned] = 1
+    pass_three_confidence = np.where(
+        pass_three_assigned,
+        rng.uniform(0.72, 0.91, len(pass_three_pool)),
+        rng.uniform(0.25, 0.69, len(pass_three_pool)),
+    )
+    add_events(
+        pass_three_pool,
+        3,
+        "geographic_specialty_activity_match",
+        pass_three_assigned,
+        pass_three_confidence,
+        candidate_counts,
+        np.where(pass_three_assigned, None, "ambiguous_or_low_confidence"),
+    )
+
+    # Anything unresolved enters manual review or remains explicitly unallocated.
+    final_pool = np.flatnonzero(~assigned)
+    manual_count = min(round(count * profile.manual_review_rate), len(final_pool))
+    manual_indexes = _choose_indexes(final_pool, manual_count, rng)
+    manual = np.isin(final_pool, manual_indexes)
+    final_status = np.where(manual, "manual_review", "unallocated")
+    final_confidence = np.where(
+        manual,
+        rng.uniform(0.55, 0.75, len(final_pool)),
+        rng.uniform(0.05, 0.49, len(final_pool)),
+    )
+    add_events(
+        final_pool,
+        4,
+        "manual_review_or_unallocated",
+        np.zeros(len(final_pool), dtype=bool),
+        final_confidence,
+        np.where(manual, 2, 0),
+        np.where(manual, "requires_analyst_review", "insufficient_evidence"),
+        final_status,
+    )
+
+    assignments = pd.concat(event_frames, ignore_index=True)
+    assignments.insert(
+        0,
+        "assignment_event_id",
+        [
+            f"ASN{month.replace('-', '')}{value:07d}"
+            for value in range(1, len(assignments) + 1)
+        ],
+    )
+    assignments["is_current"] = ~assignments.duplicated(
+        subset="application_id", keep="last"
+    )
+    assignments = assignments.drop(columns="application_index")
+    assigned_provider = pd.Series(
+        np.where(assigned, candidate_ids, None), index=applications.index, dtype="object"
+    )
+    return assignments, assigned, assigned_provider
+
+
 def generate_month(month: str, output_root: Path = RAW_ROOT) -> dict[str, pd.DataFrame]:
     profile = PROFILES.get(month, MonthProfile(14_800, 0.95, 0.02, 1.0))
     rng = _rng(month)
@@ -210,64 +398,13 @@ def generate_month(month: str, output_root: Path = RAW_ROOT) -> dict[str, pd.Dat
         }
     )
 
-    known_assignment_probability = 0.995
-    unknown_assignment_probability = np.clip(
-        2 * profile.assignment_rate - known_assignment_probability, 0, 1
-    )
-    assignment_probability = np.where(
+    assignments, assigned, assigned_provider = _build_assignment_waterfall(
+        applications,
+        candidates,
         intake_attributed,
-        known_assignment_probability,
-        unknown_assignment_probability,
-    )
-    assigned = rng.random(count) < assignment_probability
-    remaining = ~assigned
-    manual_probability = profile.manual_review_rate / (1 - profile.assignment_rate)
-    manual = remaining & (rng.random(count) < manual_probability)
-    confidence = np.where(
-        assigned,
-        rng.beta(18, 2, size=count),
-        np.where(
-            manual,
-            rng.uniform(0.55, 0.82, size=count),
-            rng.uniform(0.05, 0.60, size=count),
-        ),
-    )
-    methods = np.where(
-        confidence >= 0.95,
-        "exact_synthetic_match",
-        np.where(confidence >= 0.90, "provider_session_match", "geographic_temporal_match"),
-    )
-    lag_days = np.where(
-        assigned,
-        rng.choice((0, 1, 2, 3), count, p=(0.55, 0.28, 0.12, 0.05)),
-        0,
-    )
-    assignments = pd.DataFrame(
-        {
-            "assignment_event_id": [
-                f"ASN{month.replace('-', '')}{value:06d}" for value in range(1, count + 1)
-            ],
-            "application_id": applications["application_id"],
-            "assignment_date": pd.Series(application_dates)
-            + pd.to_timedelta(lag_days, unit="D"),
-            "assigned_provider_id": candidates["provider_id"].where(assigned),
-            "assignment_method": pd.Series(methods).where(
-                assigned, np.where(manual, "manual_review", "insufficient_evidence")
-            ),
-            "assignment_confidence": confidence.round(4),
-            "assignment_status": np.where(
-                assigned, "assigned", np.where(manual, "manual_review", "unallocated")
-            ),
-            "assigned_by": np.where(
-                assigned & (confidence >= 0.9),
-                "rules_engine",
-                np.where(
-                    assigned,
-                    "system_match",
-                    np.where(manual, "analyst_review", "rules_engine"),
-                ),
-            ),
-        }
+        profile,
+        month,
+        rng,
     )
 
     financed_mask = converted & assigned
@@ -296,7 +433,7 @@ def generate_month(month: str, output_root: Path = RAW_ROOT) -> dict[str, pd.Dat
         }
     )
 
-    assigned_counts = assignments.loc[assigned].groupby("assigned_provider_id").size()
+    assigned_counts = assigned_provider.dropna().value_counts()
     provider_activity = providers[["provider_id"]].copy()
     provider_activity.insert(0, "month", month)
     provider_activity["applications_count"] = (

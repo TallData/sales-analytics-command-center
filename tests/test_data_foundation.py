@@ -30,12 +30,17 @@ def test_applications_and_assignment_events_are_separate(tmp_path: Path) -> None
     assert applications["provider_id"].notna().equals(
         applications["sales_rep_id"].notna()
     )
-    assignment_rate = (
-        frames["application_assignment_events"]["assignment_status"]
-        .eq("assigned")
-        .mean()
-    )
+    events = frames["application_assignment_events"]
+    current_events = events.loc[events["is_current"]]
+    assignment_rate = current_events["assignment_status"].eq("assigned").mean()
     assert 0.87 <= assignment_rate <= 0.91
+    assert current_events["application_id"].nunique() == len(applications)
+    assert events["assignment_step"].nunique() == 4
+    assert {
+        "validated_intake_attribution",
+        "provider_session_match",
+        "geographic_specialty_activity_match",
+    }.issubset(set(events["assignment_method"]))
 
 
 def test_bad_fixture_has_exactly_17_unknown_provider_references(

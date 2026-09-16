@@ -27,6 +27,8 @@ dbt sources (analytics models arrive in PR 2)
 
 Approximately 50% of applications arrive with provisional provider and sales-rep attribution from the intake source; the other 50% enter the unallocated pool. A separate `application_assignment_events` source records the authoritative downstream assignment outcome and confidence.
 
+Unresolved applications move through an explainable allocation waterfall: validated intake attribution, fictional provider-session matching, and geographic + specialty + activity matching. Every attempt is retained, and exactly one event is marked as the current outcome.
+
 ## Stack
 
 Python 3.11+, pandas, NumPy, PyArrow, DuckDB, pytest, Ruff, and dbt Core/dbt-duckdb source definitions.

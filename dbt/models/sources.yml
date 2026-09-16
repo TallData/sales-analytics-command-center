@@ -19,7 +19,7 @@ sources:
           - name: application_id
             tests: [not_null]
       - name: application_assignment_events
-        description: Illustrative synthetic downstream assignment event stream.
+        description: Illustrative synthetic allocation-attempt stream with three automated waterfall passes and a final current state.
         columns:
           - name: assignment_event_id
             tests: [not_null]

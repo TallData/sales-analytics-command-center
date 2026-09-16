@@ -18,6 +18,8 @@ The generator creates approximately 116,000 applications across January through 
 
 Half of digital application intake records contain provisional `provider_id` and `sales_rep_id` values supplied by the synthetic source, while half arrive without them. These intake values are evidence, not confirmed sales attribution. Downstream analytics must resolve current assignment state from the separate event stream and preserve unresolved applications.
 
+The assignment event source is a lifecycle stream rather than a one-row final-state table. Applications pass through up to three automated allocation steps, followed by a manual-review or unallocated outcome. Each event stores its step, attempt number, candidate information, score, result, and rejection reason. `is_current` identifies the single latest state for each application.
+
 ## Snapshot and lineage strategy
 
 Each month contains the nine source files defined in the data dictionary. Generated binaries are excluded from Git because they are deterministic build products. Ingestion adds `source_month` lineage based on the containing directory and records row counts in `audit.ingestion_runs`.

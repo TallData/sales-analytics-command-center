@@ -83,6 +83,7 @@ def run_qa(
             (providers, "provider_id", "provider_id"),
             (reps, "sales_rep_id", "sales_rep_id"),
             (applications, "application_id", "application_id"),
+            (assignments, "assignment_event_id", "assignment_event_id"),
             (sales, "transaction_id", "transaction_id"),
         ):
             _check(
@@ -149,6 +150,26 @@ def run_qa(
             ),
             "assignment rows reference unknown applications",
         )
+        current_counts = assignments.groupby("application_id")["is_current"].sum()
+        _check(
+            results,
+            f"{month}_one_current_assignment_state",
+            int((current_counts != 1).sum()),
+            "every application must have exactly one current assignment state",
+        )
+        attempt_order = assignments.sort_values(
+            ["application_id", "assignment_attempt"]
+        ).groupby("application_id")["assignment_attempt"].apply(list)
+        invalid_order = sum(
+            attempts != list(range(1, len(attempts) + 1))
+            for attempts in attempt_order
+        )
+        _check(
+            results,
+            f"{month}_waterfall_attempt_sequence",
+            invalid_order,
+            "assignment attempts must be sequential within each application",
+        )
         bad_provider = assignments["assigned_provider_id"].notna() & ~assignments[
             "assigned_provider_id"
         ].isin(providers["provider_id"])
@@ -157,6 +178,26 @@ def run_qa(
             f"{month}_assignment_provider_relationship",
             int(bad_provider.sum()),
             f"{int(bad_provider.sum())} assignment records reference unknown providers",
+        )
+        bad_candidate = assignments["candidate_provider_id"].notna() & ~assignments[
+            "candidate_provider_id"
+        ].isin(providers["provider_id"])
+        _check(
+            results,
+            f"{month}_assignment_candidate_relationship",
+            int(bad_candidate.sum()),
+            "assignment attempts reference unknown candidate providers",
+        )
+        current_assignments = assignments.loc[assignments["is_current"]]
+        invalid_current_provider = (
+            current_assignments["assignment_status"].eq("assigned")
+            != current_assignments["assigned_provider_id"].notna()
+        )
+        _check(
+            results,
+            f"{month}_current_assignment_provider_consistency",
+            int(invalid_current_provider.sum()),
+            "current assigned states must contain a provider and unresolved states must not",
         )
         _check(
             results,
@@ -262,7 +303,7 @@ def run_qa(
             f"applications={count}",
         )
         prior_count = count
-        assignment_rate = assignments["assignment_status"].eq("assigned").mean()
+        assignment_rate = current_assignments["assignment_status"].eq("assigned").mean()
         _check(
             results,
             f"{month}_assignment_rate_monitoring",
