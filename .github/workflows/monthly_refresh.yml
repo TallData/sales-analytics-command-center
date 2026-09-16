@@ -1,0 +1,27 @@
+name: Monthly refresh demonstration
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 10 3 * *"
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Generate or locate monthly files
+        run: python -m src.generate_synthetic_data --all
+      - name: Validate sources and produce QA report
+        run: python -m src.qa
+      - name: Build local analytical warehouse
+        run: python -m src.ingest
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qa-report
+          path: qa_output/latest.json

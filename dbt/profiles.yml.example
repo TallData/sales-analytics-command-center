@@ -1,0 +1,7 @@
+sales_analytics_command_center:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: ../warehouse/sales_analytics.duckdb
+      threads: 4

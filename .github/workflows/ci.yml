@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  data-foundation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: ruff check src tests
+      - run: pytest -q
+      - run: python -m src.generate_synthetic_data --all
+      - run: python -m src.qa
+      - run: python -m src.ingest
+      - run: cp dbt/profiles.yml.example dbt/profiles.yml
+      - run: dbt parse --project-dir dbt --profiles-dir dbt
