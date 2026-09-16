@@ -91,14 +91,43 @@ def run_qa(
                 int(frame[column].duplicated().sum()),
                 "duplicate identifiers",
             )
-        attribution_columns = {"provider_id", "sales_rep_id"}.intersection(
-            applications.columns
+        paired_attribution = applications["provider_id"].notna().eq(
+            applications["sales_rep_id"].notna()
         )
         _check(
             results,
-            f"{month}_raw_application_has_no_attribution",
-            len(attribution_columns),
-            "raw applications must not carry authoritative attribution",
+            f"{month}_intake_attribution_is_paired",
+            int((~paired_attribution).sum()),
+            "provider and rep intake attribution must be populated together",
+        )
+        intake_rate = applications["provider_id"].notna().mean()
+        _check(
+            results,
+            f"{month}_intake_attribution_rate",
+            int(not 0.49 <= intake_rate <= 0.51),
+            f"intake_attribution_rate={intake_rate:.4f}",
+        )
+        _check(
+            results,
+            f"{month}_intake_provider_relationship",
+            int(
+                (
+                    applications["provider_id"].notna()
+                    & ~applications["provider_id"].isin(providers["provider_id"])
+                ).sum()
+            ),
+            "intake attribution references unknown providers",
+        )
+        _check(
+            results,
+            f"{month}_intake_rep_relationship",
+            int(
+                (
+                    applications["sales_rep_id"].notna()
+                    & ~applications["sales_rep_id"].isin(reps["sales_rep_id"])
+                ).sum()
+            ),
+            "intake attribution references unknown reps",
         )
         _check(
             results,

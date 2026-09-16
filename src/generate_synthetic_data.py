@@ -181,6 +181,9 @@ def generate_month(month: str, output_root: Path = RAW_ROOT) -> dict[str, pd.Dat
         approved, requested * rng.uniform(0.68, 1.0, size=count), 0.0
     ).round(2)
     converted = approved & (rng.random(count) < 0.48)
+    intake_attributed = np.zeros(count, dtype=bool)
+    intake_attributed[: count // 2] = True
+    rng.shuffle(intake_attributed)
     applications = pd.DataFrame(
         {
             "application_id": [
@@ -190,6 +193,10 @@ def generate_month(month: str, output_root: Path = RAW_ROOT) -> dict[str, pd.Dat
             "application_month": month,
             "customer_zip": candidates["provider_zip"].to_numpy(),
             "customer_state": candidates["provider_state"].to_numpy(),
+            # Intake attribution is a source-provided hint. The assignment event remains
+            # the authoritative downstream state used by sales analytics.
+            "provider_id": candidates["provider_id"].where(intake_attributed),
+            "sales_rep_id": candidates["sales_rep_id"].where(intake_attributed),
             "requested_amount": requested,
             "approval_flag": np.where(approved, "Y", "N"),
             "approved_amount": approved_amount,
@@ -203,11 +210,19 @@ def generate_month(month: str, output_root: Path = RAW_ROOT) -> dict[str, pd.Dat
         }
     )
 
-    outcome_draw = rng.random(count)
-    assigned = outcome_draw < profile.assignment_rate
-    manual = (outcome_draw >= profile.assignment_rate) & (
-        outcome_draw < profile.assignment_rate + profile.manual_review_rate
+    known_assignment_probability = 0.995
+    unknown_assignment_probability = np.clip(
+        2 * profile.assignment_rate - known_assignment_probability, 0, 1
     )
+    assignment_probability = np.where(
+        intake_attributed,
+        known_assignment_probability,
+        unknown_assignment_probability,
+    )
+    assigned = rng.random(count) < assignment_probability
+    remaining = ~assigned
+    manual_probability = profile.manual_review_rate / (1 - profile.assignment_rate)
+    manual = remaining & (rng.random(count) < manual_probability)
     confidence = np.where(
         assigned,
         rng.beta(18, 2, size=count),

@@ -24,8 +24,12 @@ def test_month_generation_is_deterministic(tmp_path: Path) -> None:
 
 def test_applications_and_assignment_events_are_separate(tmp_path: Path) -> None:
     frames = generate_month("2026-08", tmp_path)
-    assert "provider_id" not in frames["applications"].columns
-    assert "sales_rep_id" not in frames["applications"].columns
+    applications = frames["applications"]
+    assert applications["provider_id"].notna().mean() == 0.5
+    assert applications["sales_rep_id"].notna().mean() == 0.5
+    assert applications["provider_id"].notna().equals(
+        applications["sales_rep_id"].notna()
+    )
     assignment_rate = (
         frames["application_assignment_events"]["assignment_status"]
         .eq("assigned")

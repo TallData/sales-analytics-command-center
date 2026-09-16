@@ -12,7 +12,7 @@ One row per sales representative: `sales_rep_id`, `sales_rep_name`, `region`, `t
 
 ## `applications`
 
-One row per digital application: `application_id`, `application_date`, `application_month`, `customer_zip`, `customer_state`, `requested_amount`, `approval_flag`, `approved_amount`, `decline_flag`, `conversion_flag`, `digital_source`. It intentionally has no authoritative provider or rep identifiers and contains no customer PII.
+One row per digital application: `application_id`, `application_date`, `application_month`, `customer_zip`, `customer_state`, `provider_id`, `sales_rep_id`, `requested_amount`, `approval_flag`, `approved_amount`, `decline_flag`, `conversion_flag`, `digital_source`. Provider and rep are provisional intake attribution populated together for approximately 50% of applications. Confirmed attribution still comes from the assignment event stream. The source contains no customer PII.
 
 ## `application_assignment_events`
 

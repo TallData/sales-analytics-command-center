@@ -25,7 +25,7 @@ DuckDB raw schema + ingestion audit
 dbt sources (analytics models arrive in PR 2)
 ```
 
-Applications contain no authoritative provider or sales-rep fields. A separate `application_assignment_events` source records the illustrative synthetic assignment outcome and confidence.
+Approximately 50% of applications arrive with provisional provider and sales-rep attribution from the intake source; the other 50% enter the unallocated pool. A separate `application_assignment_events` source records the authoritative downstream assignment outcome and confidence.
 
 ## Stack
 

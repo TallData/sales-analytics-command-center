@@ -14,7 +14,7 @@ sources:
           - name: sales_rep_id
             tests: [not_null]
       - name: applications
-        description: Digital intake with no authoritative provider or rep attribution.
+        description: Digital intake with provisional provider and rep attribution on approximately 50% of records; confirmed attribution comes from assignment events.
         columns:
           - name: application_id
             tests: [not_null]

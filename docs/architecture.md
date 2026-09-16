@@ -16,7 +16,7 @@ The generator creates approximately 116,000 applications across January through 
 
 ## Attribution boundary
 
-Digital application intake does not contain `provider_id` or `sales_rep_id`. Candidate provider context is used only inside the synthetic generator to produce a separate assignment event. Downstream analytics must resolve current assignment state from that event stream and must preserve unresolved applications.
+Half of digital application intake records contain provisional `provider_id` and `sales_rep_id` values supplied by the synthetic source, while half arrive without them. These intake values are evidence, not confirmed sales attribution. Downstream analytics must resolve current assignment state from the separate event stream and preserve unresolved applications.
 
 ## Snapshot and lineage strategy
 
